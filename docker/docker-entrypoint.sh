@@ -73,6 +73,13 @@ export OIDC_CLIENT_ID="${OIDC_CLIENT_ID:-}"
 export OIDC_CLIENT_SECRET="${OIDC_CLIENT_SECRET:-}"
 export DISABLE_INTERNAL_AUTH="${DISABLE_INTERNAL_AUTH:-}"
 export APP_URL="${APP_URL:-}"
+# Passed empty when unset: config treats a missing URL or model as disabled.
+export AI_ENABLED="${AI_ENABLED:-}"
+export AI_BASE_URL="${AI_BASE_URL:-}"
+export AI_MODEL="${AI_MODEL:-}"
+export AI_API_KEY="${AI_API_KEY:-}"
+export AI_TIMEOUT_MS="${AI_TIMEOUT_MS:-}"
+export AI_CONTEXT_TOKENS="${AI_CONTEXT_TOKENS:-}"
 
 if [ "$USE_EMBEDDED_POSTGRES" = "1" ]; then
   echo "[anchor] Using embedded Postgres"

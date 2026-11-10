@@ -80,12 +80,52 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   DISABLE_INTERNAL_AUTH?: string;
+
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  AI_ENABLED?: string;
+
+  // The API root including any prefix, for example http://ollama:11434/v1.
+  @IsOptional()
+  @IsString()
+  AI_BASE_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  AI_MODEL?: string;
+
+  @IsOptional()
+  @IsString()
+  AI_API_KEY?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1000)
+  @Max(600000)
+  AI_TIMEOUT_MS?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(512)
+  @Max(2000000)
+  AI_CONTEXT_TOKENS?: number;
 }
 
 export function validate(
   config: Record<string, unknown>,
 ): EnvironmentVariables {
-  const validated = plainToInstance(EnvironmentVariables, config, {
+  // The container forwards AI_* even when unset (empty string). Treat those as
+  // absent so numeric validation sees "not provided", not zero.
+  const normalized = Object.fromEntries(
+    Object.entries(config).filter(
+      ([key, value]) =>
+        !(key.startsWith('AI_') && typeof value === 'string' && !value.trim()),
+    ),
+  );
+
+  const validated = plainToInstance(EnvironmentVariables, normalized, {
     enableImplicitConversion: true,
   });
 

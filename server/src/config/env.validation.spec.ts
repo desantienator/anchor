@@ -60,4 +60,27 @@ describe('validate (environment)', () => {
       /USER_SIGNUP/,
     );
   });
+
+  it('treats blank AI values from the container as unset', () => {
+    expect(() =>
+      validate({
+        ...base,
+        AI_ENABLED: '',
+        AI_BASE_URL: '',
+        AI_MODEL: '',
+        AI_API_KEY: '',
+        AI_TIMEOUT_MS: '',
+        AI_CONTEXT_TOKENS: '',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects an out-of-range AI timeout and a non-boolean switch', () => {
+    expect(() => validate({ ...base, AI_TIMEOUT_MS: '10' })).toThrow(
+      /AI_TIMEOUT_MS/,
+    );
+    expect(() => validate({ ...base, AI_ENABLED: 'yes' })).toThrow(
+      /AI_ENABLED/,
+    );
+  });
 });

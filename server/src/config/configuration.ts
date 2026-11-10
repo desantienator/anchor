@@ -33,9 +33,37 @@ export const StorageConfig = registerAs('storage', () => {
   };
 });
 
+const DEFAULT_AI_TIMEOUT_MS = 120_000;
+const DEFAULT_AI_CONTEXT_TOKENS = 8192;
+
+/** Empty or unparseable values fall back to the default. */
+function intFromEnv(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+// An OpenAI-compatible chat-completions endpoint, reached from the server.
+// Disabled unless a base URL and model are both set.
+export const AiConfig = registerAs('ai', () => {
+  const baseUrl = (process.env.AI_BASE_URL?.trim() ?? '').replace(/\/+$/, '');
+  const model = process.env.AI_MODEL?.trim() ?? '';
+  return {
+    enabled: process.env.AI_ENABLED === 'true' && !!baseUrl && !!model,
+    baseUrl,
+    model,
+    apiKey: process.env.AI_API_KEY?.trim() || null,
+    timeoutMs: intFromEnv(process.env.AI_TIMEOUT_MS, DEFAULT_AI_TIMEOUT_MS),
+    contextTokens: intFromEnv(
+      process.env.AI_CONTEXT_TOKENS,
+      DEFAULT_AI_CONTEXT_TOKENS,
+    ),
+  };
+});
+
 export const configurations = [
   AppConfig,
   DatabaseConfig,
   AuthConfig,
   StorageConfig,
+  AiConfig,
 ];

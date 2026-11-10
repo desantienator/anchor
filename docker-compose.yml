@@ -12,6 +12,14 @@ services:
       - PG_USER=anchor
       - PG_PASSWORD=password
       - PG_DATABASE=anchor
+      # Local AI. Uncomment to enable; the URL must be reachable from inside
+      # this container, so 127.0.0.1 means the container itself.
+      # - AI_ENABLED=true
+      # - AI_BASE_URL=http://host.docker.internal:11434/v1
+      # - AI_MODEL=qwen2.5:3b
+      # - AI_API_KEY=
+      # - AI_TIMEOUT_MS=120000
+      # - AI_CONTEXT_TOKENS=8192
     volumes:
       - anchor_data:/data
 

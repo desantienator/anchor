@@ -2,6 +2,7 @@
 
 import { AnchorLogo } from "@/components/layout/anchor-logo";
 import { AppPage, PageTitle } from "@/components/layout/app-page";
+import { AiSettingsSection } from "@/features/ai";
 import {
   ApiTokenSection,
   AppearanceSection,
@@ -23,6 +24,7 @@ export default function SettingsPage() {
           <ProfileSection />
           <AppearanceSection />
           <EditorSection />
+          <AiSettingsSection />
           <ApiTokenSection />
           <ImportExportSection />
           <PasswordSection />

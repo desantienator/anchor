@@ -80,6 +80,23 @@ model User {
   changeLog            ChangeLog[]
   noteRevisions        NoteRevision[]
   noteReminders        NoteReminder[]
+  aiPreferences        UserAiPreferences?
+}
+
+// Opt-in for sending note content to the configured local model, plus the
+// provider configuration version the person consented to.
+model UserAiPreferences {
+  userId             String   @id
+  enabled            Boolean  @default(false)
+  taggingEnabled     Boolean  @default(true)
+  spellingEnabled    Boolean  @default(true)
+  onSaveEnabled      Boolean  @default(false)
+  autoApplyTags      Boolean  @default(false)
+  locale             String   @default("en")
+  consentedConfigKey String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Settings {

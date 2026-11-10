@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { toast } from "@/components/ui/toast";
+import { AiReviewDialog, getAiCapabilities, useAutoTags } from "@/features/ai";
 import { useAuth } from "@/features/auth";
 import {
   deletionDate,
@@ -101,6 +102,7 @@ function NoteEditor({
     contentEditorRef,
   });
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [previewBackground, setPreviewBackground] = useState<
     string | null | false
   >(false);
@@ -118,6 +120,25 @@ function NoteEditor({
     queryKey: ["note-shares", noteId],
     queryFn: () => getNoteShares(noteId),
     enabled: !isNew && isOwner && shareCount > 0,
+  });
+  // Hidden entirely when the server has no endpoint, so no dead menu item.
+  const { data: aiCapabilities } = useQuery({
+    queryKey: ["ai", "capabilities"],
+    queryFn: getAiCapabilities,
+    staleTime: 5 * 60 * 1000,
+  });
+  useAutoTags({
+    noteId,
+    version: note?.version ?? 0,
+    content: editor.content,
+    tagIds: editor.selectedTagIds,
+    settled:
+      !isNew &&
+      !editor.isSavingDraft &&
+      !editor.hasUnsavedChanges &&
+      note?.state === "active",
+    enabled: !!aiCapabilities?.configured && isOwner,
+    onChange: editor.setSelectedTagIds,
   });
 
   const createTagMutation = useMutation({
@@ -267,6 +288,11 @@ function NoteEditor({
             onReminder={editor.changeReminder}
             onShare={() => setShareDialogOpen(true)}
             onHistory={openHistory}
+            onAi={
+              aiCapabilities?.configured && !trashed && !saveRefused
+                ? () => setAiOpen(true)
+                : undefined
+            }
             onArchive={actions.archive}
             onUnarchive={actions.unarchive}
             onTrash={actions.trash}
@@ -337,6 +363,22 @@ function NoteEditor({
           onOpenChange={setShareDialogOpen}
           noteId={noteId}
           title={editor.title}
+        />
+      )}
+      {!isNew && note && (
+        <AiReviewDialog
+          open={aiOpen}
+          onOpenChange={setAiOpen}
+          noteId={noteId}
+          version={note.version}
+          content={editor.content}
+          title={editor.title}
+          tagIds={editor.selectedTagIds}
+          allTags={allTags}
+          canEditText={!isViewer}
+          flushEdits={editor.flushEdits}
+          onApplyTags={editor.setSelectedTagIds}
+          onApplyContent={editor.setContent}
         />
       )}
     </div>

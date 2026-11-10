@@ -18,6 +18,7 @@ import {
   Palette,
   Pin,
   PinOff,
+  Sparkles,
   Trash2,
   UserPlus,
 } from "lucide-react";
@@ -73,6 +74,8 @@ interface NoteEditorHeaderProps {
   onArchive: () => void;
   onUnarchive: () => void;
   onTrash: () => void;
+  /** Opens local AI suggestions; absent when AI is unavailable. */
+  onAi?: () => void;
   /** Only for a note you can edit. */
   checklist?: ChecklistActions;
 }
@@ -227,6 +230,16 @@ export function NoteEditorHeader(props: NoteEditorHeaderProps) {
                   >
                     <History />
                     Version history
+                  </DropdownMenuItem>
+                )}
+                {props.onAi && (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      afterMenu.current = props.onAi ?? null;
+                    }}
+                  >
+                    <Sparkles />
+                    Local AI suggestions
                   </DropdownMenuItem>
                 )}
                 {props.isArchived ? (

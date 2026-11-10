@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { AppConfig, StorageConfig } from './configuration';
+import { AiConfig, AppConfig, StorageConfig } from './configuration';
 
 describe('configuration namespaces', () => {
   const original = process.env;
@@ -10,6 +10,54 @@ describe('configuration namespaces', () => {
     delete process.env.CORS_ORIGINS;
     delete process.env.APP_URL;
     delete process.env.PORT;
+    delete process.env.AI_ENABLED;
+    delete process.env.AI_BASE_URL;
+    delete process.env.AI_MODEL;
+    delete process.env.AI_API_KEY;
+    delete process.env.AI_TIMEOUT_MS;
+    delete process.env.AI_CONTEXT_TOKENS;
+  });
+
+  describe('AiConfig', () => {
+    it('stays off until both a URL and a model are set', () => {
+      process.env.AI_ENABLED = 'true';
+      expect(AiConfig().enabled).toBe(false);
+
+      process.env.AI_BASE_URL = 'http://model:11434/v1';
+      expect(AiConfig().enabled).toBe(false);
+
+      process.env.AI_MODEL = 'tiny';
+      expect(AiConfig()).toMatchObject({
+        enabled: true,
+        baseUrl: 'http://model:11434/v1',
+        model: 'tiny',
+        apiKey: null,
+      });
+    });
+
+    it('honours the explicit off switch', () => {
+      process.env.AI_ENABLED = 'false';
+      process.env.AI_BASE_URL = 'http://model:11434/v1';
+      process.env.AI_MODEL = 'tiny';
+
+      expect(AiConfig().enabled).toBe(false);
+    });
+
+    it('strips trailing slashes so the path appends once', () => {
+      process.env.AI_BASE_URL = 'http://model:11434/v1///';
+
+      expect(AiConfig().baseUrl).toBe('http://model:11434/v1');
+    });
+
+    it('falls back to defaults for blank limits', () => {
+      process.env.AI_TIMEOUT_MS = '';
+      process.env.AI_CONTEXT_TOKENS = '';
+
+      expect(AiConfig()).toMatchObject({
+        timeoutMs: 120_000,
+        contextTokens: 8192,
+      });
+    });
   });
 
   afterAll(() => {

@@ -40,6 +40,7 @@ Anchor focuses on speed, privacy, simplicity, and reliability across mobile and 
 - **Home Screen Widget** - Quick access to your notes from the Android home screen
 - **Admin Panel** - User management, registration control, and system statistics
 - **OIDC Authentication** - Sign in with OpenID Connect providers (Pocket ID, Authelia, Keycloak, etc.)
+- **Local AI** - Optional tag suggestions and spelling checks from your own OpenAI-compatible endpoint (Ollama, LM Studio, llama.cpp, vLLM), with review before anything changes
 
 ## Screenshots
 
@@ -100,6 +101,12 @@ Anchor focuses on speed, privacy, simplicity, and reliability across mobile and 
    | `OIDC_CLIENT_ID` | When OIDC enabled | (not set) | OIDC client ID |
    | `OIDC_CLIENT_SECRET` | No | (not set) | OIDC client secret. Omit for public client (PKCE) |
    | `DISABLE_INTERNAL_AUTH` | No | `false` | Hide local login form when OIDC is enabled (OIDC-only mode) |
+   | `AI_ENABLED` | No | `false` | Turn on local AI. Needs `AI_BASE_URL` and `AI_MODEL` too |
+   | `AI_BASE_URL` | When AI enabled | (not set) | API root of an OpenAI-compatible server, including any prefix, e.g. `http://host.docker.internal:11434/v1` |
+   | `AI_MODEL` | When AI enabled | (not set) | Model ID the endpoint serves |
+   | `AI_API_KEY` | No | (not set) | Sent as a Bearer token when set |
+   | `AI_TIMEOUT_MS` | No | `120000` | Whole-request timeout, including the response body |
+   | `AI_CONTEXT_TOKENS` | No | `8192` | Sizes how much text is sent per completion |
 
 3. **Start the container:**
 
@@ -226,6 +233,37 @@ services:
 #### Admin UI Configuration
 
 Alternatively, configure OIDC in the admin panel (Admin → Sign-in → Single sign-on) when the three env vars are not all set.
+
+## Local AI
+
+Anchor can suggest tags and spelling corrections using a model you run yourself. It talks to any OpenAI-compatible chat-completions endpoint, so Ollama, LM Studio, llama.cpp server and vLLM all work.
+
+1. Start your model server, for example `ollama serve` and `ollama pull qwen2.5:3b`.
+2. Give Anchor the endpoint. Inside Docker, `127.0.0.1` is the container itself, so use `host.docker.internal` or the host's LAN address:
+
+   ```yaml
+   services:
+     anchor:
+       environment:
+         - AI_ENABLED=true
+         - AI_BASE_URL=http://host.docker.internal:11434/v1
+         - AI_MODEL=qwen2.5:3b
+         # - AI_API_KEY=      # only if your endpoint requires one
+   ```
+
+3. Sign in, open **Settings → Local AI**, and turn it on. The destination and model are shown before anything is sent.
+
+Then open a note, use **More → Local AI suggestions**, and ask for tags or a spelling check. Suggestions appear for review; nothing is written until you press **Apply selected**, and the result offers Undo.
+
+Behaviour worth knowing:
+
+- **Opt-in, per person.** Content is only sent once you enable the feature, and it goes only to the endpoint your administrator configured. Anchor adds no cloud fallback.
+- **Review first.** Tags are chosen from your own tag list. Spelling is applied as exact word replacements that keep formatting, lists, links and code untouched; code, URLs and attachments are never sent.
+- **Stale results are refused.** If the note changes after analysis, applying is blocked and you re-analyse instead of overwriting newer text.
+- **Endpoint down? Nothing breaks.** Notes save and sync as usual; AI shows an error and you can retry.
+- **Optional auto-tagging.** "Add matching tags after saving" adds existing tags shortly after you stop editing. It only adds, never removes, and only runs on notes you open.
+
+Large notes are analysed in chunks and report how much was covered. If your model has a small context, lower `AI_CONTEXT_TOKENS`.
 
 ## Backup and Restore
 

@@ -156,6 +156,14 @@ go in `test/` and are reused across specs.
 - `POST /api/sync` - Combined push + pull: applies client changes, returns the change feed past a cursor
 - `GET /api/sync/events` - SSE stream of `{ seq }` pokes telling clients when to pull
 
+### Local AI (optional)
+
+- `GET /api/ai/capabilities` - Whether an endpoint is configured, plus its model and destination
+- `GET /api/ai/preferences` - The caller's opt-in state and consent status
+- `PATCH /api/ai/preferences` - Update the opt-in flags, locale, or record consent
+- `POST /api/ai/notes/:noteId/analyze` - Read-only suggestions; requires the `x-note-version` header and `{ operation: 'tags' | 'spelling' }`
+- `POST /api/admin/ai/test` - Admin-only reachability check against the configured endpoint
+
 ### Admin (requires admin privileges)
 
 - `GET /api/admin/stats` - Get server statistics
