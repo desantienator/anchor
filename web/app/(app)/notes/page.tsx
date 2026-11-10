@@ -8,6 +8,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  Sparkles,
   Tag as TagIcon,
   Trash2,
   X,
@@ -15,7 +16,12 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
-import { AppPage, Fab, PageTitle } from "@/components/layout/app-page";
+import {
+  AppPage,
+  Fab,
+  PageTitle,
+  TopBarButton,
+} from "@/components/layout/app-page";
 import { newNoteHref } from "@/components/layout/sidebar";
 import { Button, IconButton } from "@/components/ui/button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -27,6 +33,11 @@ import {
 import { SelectionBar } from "@/components/ui/selection-bar";
 import { toast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
+import {
+  getAiCapabilities,
+  getAiPreferences,
+  ProcessLibraryDialog,
+} from "@/features/ai";
 import {
   bulkArchiveNotes,
   bulkDeleteNotes,
@@ -110,6 +121,20 @@ function NotesView({ tagId }: { tagId: string | null }) {
     ids: string[];
     sharedCount: number;
   } | null>(null);
+  const [processingOpen, setProcessingOpen] = React.useState(false);
+
+  const aiCapabilities = useQuery({
+    queryKey: ["ai", "capabilities"],
+    queryFn: getAiCapabilities,
+    staleTime: 5 * 60 * 1000,
+  });
+  const aiPreferences = useQuery({
+    queryKey: ["ai", "preferences"],
+    queryFn: getAiPreferences,
+    staleTime: 60 * 1000,
+  });
+  const canProcess =
+    !!aiCapabilities.data?.configured && !!aiPreferences.data?.enabled;
 
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ["notes", tagId],
@@ -277,7 +302,16 @@ function NotesView({ tagId }: { tagId: string | null }) {
               placeholder={tag ? `Search #${tag.name}` : "Search notes"}
               autoFocus={searchParams.has("search")}
               onSearchFocus={archived.loadForSearch}
-            />
+            >
+              {canProcess && (
+                <TopBarButton
+                  icon={<Sparkles aria-hidden />}
+                  onClick={() => setProcessingOpen(true)}
+                >
+                  Process
+                </TopBarButton>
+              )}
+            </NoteListActions>
           )
         }
       >
@@ -372,6 +406,11 @@ function NotesView({ tagId }: { tagId: string | null }) {
             ]}
           />
         )}
+        <ProcessLibraryDialog
+          open={processingOpen}
+          onOpenChange={setProcessingOpen}
+          notes={[...notes, ...archived.all]}
+        />
       </AppPage>
 
       {!list.picking && (

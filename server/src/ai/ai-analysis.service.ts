@@ -28,7 +28,7 @@ async function askForJson(
   shape: string,
   maxTokens: number,
   signal?: AbortSignal,
-): Promise<unknown> {
+): Promise<Record<string, unknown>> {
   const first = parseJsonObject(
     await client.complete(messages, maxTokens, signal),
   );

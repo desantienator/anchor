@@ -21,15 +21,15 @@ export function parseJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === 'object' && !Array.isArray(value);
-
 /**
  * Keeps tag IDs the caller owns, in model order, without duplicates. An id
  * the person did not offer is dropped rather than trusted.
  */
-export function acceptedTagIds(raw: unknown, allowed: Set<string>): string[] {
-  if (!isRecord(raw) || !Array.isArray(raw.tagIds)) return [];
+export function acceptedTagIds(
+  raw: Record<string, unknown>,
+  allowed: Set<string>,
+): string[] {
+  if (!Array.isArray(raw.tagIds)) return [];
   const out: string[] = [];
   for (const value of raw.tagIds) {
     if (typeof value !== 'string') continue;
@@ -43,24 +43,34 @@ export function acceptedTagIds(raw: unknown, allowed: Set<string>): string[] {
 
 const hasLineBreak = (text: string) => /[\r\n]/.test(text);
 
+/** Reads one property of an unvalidated object without trusting its shape. */
+function readField(value: object, key: string): unknown {
+  return Object.prototype.hasOwnProperty.call(value, key)
+    ? Reflect.get(value, key)
+    : undefined;
+}
+
 /**
  * Turns model edits into exact ranges on the original segment. Anything
  * ambiguous or structural is dropped: the model proposes, the code decides.
  */
 export function acceptedEdits(
-  raw: unknown,
+  raw: Record<string, unknown>,
   segments: Map<string, ProseSegment>,
 ): SpellingEdit[] {
-  if (!isRecord(raw) || !Array.isArray(raw.edits)) return [];
+  if (!Array.isArray(raw.edits)) return [];
 
   const edits: SpellingEdit[] = [];
   const claimed = new Map<string, Array<[number, number]>>();
 
-  for (const value of raw.edits) {
+  const candidates: unknown[] = raw.edits;
+  for (const candidate of candidates) {
     if (edits.length >= AI_CONSTANTS.MAX_EDITS_PER_CHUNK) break;
-    if (!isRecord(value)) continue;
-
-    const { segmentId, original, replacement } = value;
+    // Array elements are unvalidated; read the three fields we trust.
+    if (!candidate || typeof candidate !== 'object') continue;
+    const segmentId = readField(candidate, 'segmentId');
+    const original = readField(candidate, 'original');
+    const replacement = readField(candidate, 'replacement');
     if (
       typeof segmentId !== 'string' ||
       typeof original !== 'string' ||
