@@ -95,7 +95,7 @@ export function AiReview({
     if (!result.ok) {
       setWarning(
         result.reason === "stale"
-          ? "The note changed since it was analysed. Analyse again to review fresh suggestions."
+          ? "The note changed since it was checked. Ask again to review fresh suggestions."
           : "These suggestions can’t be applied to this note.",
       );
       return;

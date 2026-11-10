@@ -189,6 +189,17 @@ export function NoteEditorHeader(props: NoteEditorHeaderProps) {
               </IconButton>
             </Tip>
           )}
+          {props.saved && props.onAi && (
+            <Tip label="Local AI suggestions">
+              <IconButton
+                label="Local AI suggestions"
+                onClick={props.onAi}
+                className={cn(afterSave)}
+              >
+                <Sparkles />
+              </IconButton>
+            </Tip>
+          )}
           {props.saved && (
             <DropdownMenu>
               <Tip label="More">

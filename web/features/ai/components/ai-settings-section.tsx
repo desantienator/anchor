@@ -107,9 +107,10 @@ export function AiSettingsSection() {
               title={<label htmlFor="ai-enabled">Use local AI</label>}
               text={
                 <>
-                  Notes you analyse are sent to <b>{destination?.model}</b> at{" "}
-                  <b>{destination?.baseUrl}</b>. Nothing is sent until you press
-                  Analyse.
+                  Notes are only sent when you ask for suggestions with{" "}
+                  <b>Local AI</b> in a note, or press <b>Process</b> on the
+                  notes list. They go to <b>{destination?.model}</b> at{" "}
+                  <b>{destination?.baseUrl}</b>.
                 </>
               }
               saved={<SaveStatus state={saveStatus} />}
@@ -173,7 +174,7 @@ export function AiSettingsSection() {
                       Add matching tags after saving
                     </label>
                   }
-                  text="When you stop editing, suggest tags and add the matching ones. Tags are only added, never removed, and only on notes you analyse."
+                  text="When you stop editing, suggest tags and add the matching ones. Tags are only added, never removed, and only on notes you open."
                 />
                 <Switch
                   id="ai-onsave"
