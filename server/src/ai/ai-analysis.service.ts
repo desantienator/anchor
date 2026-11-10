@@ -154,7 +154,8 @@ export class AiAnalysisService {
       200,
       signal,
     );
-    return acceptedTagIds(raw, new Set(tags.map((tag) => tag.id)));
+    // Pass the names too: models often echo a name instead of the id.
+    return acceptedTagIds(raw, tags);
   }
 
   private async suggestSpelling(
