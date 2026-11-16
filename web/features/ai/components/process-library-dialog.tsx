@@ -132,9 +132,9 @@ export function ProcessLibraryDialog({
                     {progress.status === "running"
                       ? `Working on “${progress.current ?? "…"}” (${progress.done + 1} of ${progress.total})`
                       : progress.status === "stopped"
-                        ? `Stopped: ${progress.changed} updated, ${progress.failed} skipped.`
+                        ? `Stopped: ${progress.changed} updated, ${progress.failed} failed.`
                         : progress.status === "done"
-                          ? `Finished: ${progress.changed} updated, ${progress.failed} skipped.`
+                          ? `Finished: ${progress.changed} updated, ${progress.failed} failed.`
                           : null}
                   </p>
                 </div>
@@ -176,7 +176,7 @@ export function ProcessLibraryDialog({
               </button>
               <button
                 type="button"
-                className="rounded-md bg-foreground px-3 py-1.5 font-medium text-ui text-surface disabled:opacity-40"
+                className="rounded-md bg-foreground px-3 py-1.5 font-medium text-card text-ui disabled:opacity-40"
                 disabled={!canRun}
                 onClick={() => start(targets, [...operations])}
               >

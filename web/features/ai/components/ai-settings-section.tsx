@@ -135,7 +135,7 @@ export function AiSettingsSection() {
               />
               <button
                 type="button"
-                className="rounded-md bg-foreground px-3 py-1.5 font-medium text-ui text-surface"
+                className="rounded-md bg-foreground px-3 py-1.5 font-medium text-card text-ui"
                 onClick={() => set({ consent: true })}
               >
                 Allow

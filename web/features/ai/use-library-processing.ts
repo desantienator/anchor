@@ -1,9 +1,10 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { HTTPError } from "ky";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
-import { saveNote } from "@/features/notes/api";
+import { getNote, saveNote } from "@/features/notes/api";
 import { type AiAnalysis, type AiOperation, analyzeNote } from "./api";
 import { planUpdate } from "./batch";
 
@@ -55,6 +56,23 @@ function combine(analyses: AiAnalysis[]): AiAnalysis {
   };
 }
 
+/** The note moved after the list was read; a fresh read can start over. */
+function isStaleSnapshot(error: unknown): boolean {
+  return error instanceof HTTPError && error.response.status === 409;
+}
+
+/** Runs every selected operation over one note's snapshot. */
+async function runAnalyses(
+  target: BatchTarget,
+  operations: AiOperation[],
+): Promise<AiAnalysis[]> {
+  const analyses: AiAnalysis[] = [];
+  for (const operation of operations) {
+    analyses.push(await analyzeNote(target.id, operation, target.version));
+  }
+  return analyses;
+}
+
 /**
  * Runs notes through the model one at a time and applies what it suggests.
  * Sequential on purpose: a local model has one small queue, and a stampede
@@ -101,11 +119,14 @@ export function useLibraryProcessing() {
       snapshots.current = new Map();
       let changed = 0;
       let failed = 0;
+      const failures: string[] = [];
 
       setProgress({ ...IDLE, status: "running", total: notes.length });
 
-      for (const [index, target] of notes.entries()) {
+      for (const [index, firstTarget] of notes.entries()) {
         if (cancelled.current) break;
+
+        let target = firstTarget;
 
         setProgress({
           status: "running",
@@ -117,41 +138,77 @@ export function useLibraryProcessing() {
         });
 
         try {
-          const analyses: AiAnalysis[] = [];
-          for (const operation of operations) {
-            analyses.push(
-              await analyzeNote(target.id, operation, target.version),
-            );
-          }
-          const before = {
+          let before = {
             content: target.content,
             tagIds: target.tagIds,
           };
-          const plan = planUpdate(
+          let analyses: AiAnalysis[];
+          try {
+            analyses = await runAnalyses(target, operations);
+          } catch (error) {
+            if (!isStaleSnapshot(error)) throw error;
+            // The list was read before this note moved (a save in another
+            // tab, an earlier autosave). Re-read that one note and analyse
+            // its current version once.
+            const fresh = await getNote(target.id);
+            target = {
+              ...target,
+              content: fresh.content ?? null,
+              tagIds: fresh.tagIds ?? [],
+              version: fresh.version,
+            };
+            before = { content: target.content, tagIds: target.tagIds };
+            analyses = await runAnalyses(target, operations);
+          }
+
+          let plan = planUpdate(
             { id: target.id, ...before },
             combine(analyses),
           );
           if (!plan.changed) continue;
-          const addedTags =
-            plan.tagIds !== undefined &&
-            plan.tagIds.length > before.tagIds.length;
 
-          const result = await saveNote(target.id, {
-            ...(plan.content !== undefined ? { content: plan.content } : {}),
-            ...(plan.tagIds !== undefined ? { tagIds: plan.tagIds } : {}),
-            // Guard against a note that moved while the model was thinking.
-            baseVersion: target.version,
-            // Keep a distinct history point before a bulk rewrite.
-            replacesOtherEdit: plan.content !== undefined,
-          });
+          const write = (baseVersion: number) =>
+            saveNote(target.id, {
+              ...(plan.content !== undefined ? { content: plan.content } : {}),
+              ...(plan.tagIds !== undefined ? { tagIds: plan.tagIds } : {}),
+              // Guard against a note that moved while the model was thinking.
+              baseVersion,
+              // Keep a distinct history point before a bulk rewrite.
+              replacesOtherEdit: plan.content !== undefined,
+            });
+          let result = await write(target.version);
+
+          if (result.status === "conflict" && result.serverNote) {
+            // The note moved while the model was thinking. Re-plan against
+            // the server's copy: edits that no longer match are dropped,
+            // the tag additions still apply.
+            const current = result.serverNote;
+            before = {
+              content: current.content ?? null,
+              tagIds: current.tagIds ?? [],
+            };
+            plan = planUpdate({ id: target.id, ...before }, combine(analyses));
+            if (!plan.changed) continue;
+            result = await write(current.version);
+          }
 
           if (result.status !== "saved") {
+            failures.push(
+              `${target.title || "Untitled"}: ${
+                result.status === "conflict"
+                  ? "it was changed while it was being processed"
+                  : "the updated note couldn't be saved"
+              }`,
+            );
             failed += 1;
             continue;
           }
 
           // The pre-run text and tags travel together, so one Undo reverses
           // both; the version guard keeps a later edit from being clobbered.
+          const addedTags =
+            plan.tagIds !== undefined &&
+            plan.tagIds.length > before.tagIds.length;
           snapshots.current.set(target.id, {
             ...before,
             savedVersion: result.note.version,
@@ -159,7 +216,15 @@ export function useLibraryProcessing() {
           });
           changed += 1;
           queryClient.setQueryData(["notes", target.id], result.note);
-        } catch {
+        } catch (error) {
+          failures.push(
+            `${target.title || "Untitled"}: ${
+              error instanceof Error && error.message
+                ? error.message
+                : "something went wrong"
+            }`,
+          );
+          console.error("AI processing failed for note", target.id, error);
           failed += 1;
         }
       }
@@ -174,9 +239,9 @@ export function useLibraryProcessing() {
         current: null,
       });
 
-      return { changed, failed, stopped };
+      return { changed, failed, stopped, failures };
     },
-    onSuccess: ({ changed, failed, stopped }) => {
+    onSuccess: ({ changed, failed, stopped, failures }) => {
       void queryClient.invalidateQueries({ queryKey: ["notes"] });
       void queryClient.invalidateQueries({ queryKey: ["tags"] });
 
@@ -197,7 +262,7 @@ export function useLibraryProcessing() {
       }
       if (failed > 0) {
         toast.error(
-          `${failed} ${failed === 1 ? "note" : "notes"} couldn’t be processed`,
+          `${failed} ${failed === 1 ? "note" : "notes"} couldn’t be processed: ${failures.join("; ")}`,
         );
       }
     },

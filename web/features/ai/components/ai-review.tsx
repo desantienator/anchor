@@ -293,7 +293,7 @@ export function AiReview({
         </button>
         <button
           type="button"
-          className="rounded-md bg-foreground px-3 py-1.5 font-medium text-ui text-surface disabled:opacity-40"
+          className="rounded-md bg-foreground px-3 py-1.5 font-medium text-card text-ui disabled:opacity-40"
           disabled={(!tagAnalysis && !spellingAnalysis) || nothingChosen}
           onClick={apply}
         >
