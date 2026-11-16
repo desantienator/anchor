@@ -69,7 +69,9 @@ export function AiReview({
     queryKey: ["ai", "preferences"],
     queryFn: getAiPreferences,
   });
-  const [analysis, setAnalysis] = React.useState<AiAnalysis | null>(null);
+  const [tagAnalysis, setTagAnalysis] = React.useState<AiAnalysis | null>(null);
+  const [spellingAnalysis, setSpellingAnalysis] =
+    React.useState<AiAnalysis | null>(null);
   const [chosenEdits, setChosenEdits] = React.useState<Set<string>>(new Set());
   const [chosenTags, setChosenTags] = React.useState<Set<string>>(new Set());
   const [warning, setWarning] = React.useState<string | null>(null);
@@ -84,13 +86,19 @@ export function AiReview({
       const baseVersion = noteVersionAfterFlush(queryClient, noteId, version);
       return analyzeNote(noteId, operation, baseVersion);
     },
-    onSuccess: (result) => {
-      setAnalysis(result);
+    onSuccess: (result, operation) => {
+      // Each operation fills only its own slot, so tag and spelling
+      // suggestions can sit in the dialog at the same time.
       setWarning(null);
-      setChosenEdits(new Set(result.edits.map(editKey)));
-      setChosenTags(
-        new Set(result.tagIds.filter((id) => !tagIds.includes(id))),
-      );
+      if (operation === "tags") {
+        setTagAnalysis(result);
+        setChosenTags(
+          new Set(result.tagIds.filter((id) => !tagIds.includes(id))),
+        );
+      } else {
+        setSpellingAnalysis(result);
+        setChosenEdits(new Set(result.edits.map(editKey)));
+      }
     },
     onError: (error) => {
       setWarning(
@@ -100,9 +108,15 @@ export function AiReview({
   });
 
   const tagById = new Map(allTags.map((tag) => [tag.id, tag]));
-  const tagSuggestions = (analysis?.tagIds ?? []).filter(
+  const tagSuggestions = (tagAnalysis?.tagIds ?? []).filter(
     (id) => !tagIds.includes(id) && tagById.has(id),
   );
+  const warnings = [
+    ...new Set([
+      ...(tagAnalysis?.warnings ?? []),
+      ...(spellingAnalysis?.warnings ?? []),
+    ]),
+  ];
 
   const toggle = (
     set: Set<string>,
@@ -116,23 +130,25 @@ export function AiReview({
   };
 
   const apply = () => {
-    if (!analysis) return;
-
-    const result = applyEdits(content, analysis, chosenEdits);
-    if (!result.ok) {
-      setWarning(
-        result.reason === "stale"
-          ? "The note changed since it was checked. Ask again to review fresh suggestions."
-          : "These suggestions can’t be applied to this note.",
-      );
-      return;
+    let nextContent = content;
+    if (chosenEdits.size > 0 && spellingAnalysis) {
+      const result = applyEdits(content, spellingAnalysis, chosenEdits);
+      if (!result.ok) {
+        setWarning(
+          result.reason === "stale"
+            ? "The note changed since it was checked. Ask again to review fresh suggestions."
+            : "These suggestions can’t be applied to this note.",
+        );
+        return;
+      }
+      nextContent = result.content;
     }
 
     const nextTags =
       chosenTags.size > 0 ? [...new Set([...tagIds, ...chosenTags])] : tagIds;
     const before = { content, tagIds };
     const after = {
-      content: result.reason === "nothing-selected" ? content : result.content,
+      content: nextContent,
       tagIds: nextTags,
     };
 
@@ -195,7 +211,7 @@ export function AiReview({
         </p>
       )}
 
-      {analysis?.warnings.map((text) => (
+      {warnings.map((text) => (
         <p key={text} className="text-meta text-muted-foreground">
           {text}
         </p>
@@ -224,16 +240,16 @@ export function AiReview({
         </section>
       )}
 
-      {analysis && analysis.edits.length > 0 && (
+      {spellingAnalysis && spellingAnalysis.edits.length > 0 && (
         <section className="grid gap-1.5">
           <h3 className="m-0 font-semibold text-meta">
             Spelling{" "}
             <span className="font-normal text-muted-foreground">
-              ({chosenEdits.size} of {analysis.edits.length})
+              ({chosenEdits.size} of {spellingAnalysis.edits.length})
             </span>
           </h3>
           <ul className="m-0 grid list-none gap-1 p-0">
-            {analysis.edits.map((edit) => {
+            {spellingAnalysis.edits.map((edit) => {
               const key = editKey(edit);
               return (
                 <li key={key}>
@@ -259,9 +275,9 @@ export function AiReview({
         </section>
       )}
 
-      {analysis &&
-        analysis.edits.length === 0 &&
-        analysis.tagIds.length === 0 && (
+      {(tagAnalysis || spellingAnalysis) &&
+        tagSuggestions.length === 0 &&
+        (spellingAnalysis?.edits.length ?? 0) === 0 && (
           <p className="text-ui text-muted-foreground">
             Nothing to change{title ? ` in “${title}”` : ""}.
           </p>
@@ -278,7 +294,7 @@ export function AiReview({
         <button
           type="button"
           className="rounded-md bg-foreground px-3 py-1.5 font-medium text-ui text-surface disabled:opacity-40"
-          disabled={!analysis || nothingChosen}
+          disabled={(!tagAnalysis && !spellingAnalysis) || nothingChosen}
           onClick={apply}
         >
           Apply selected
