@@ -37,7 +37,8 @@ const EMAIL_PATTERN = /\S+@\S+\.\S+/;
 /**
  * Splits the note into prose runs with exact offsets into the stored Delta's
  * plain text, so a correction maps back without guessing. Text inside code,
- * links, URLs and embeds is excluded.
+ * links, URLs and embeds is excluded. totalChars also counts that excluded
+ * prose, so callers can tell when coverage was only partial.
  */
 export function proseSegments(content: string | null | undefined): {
   segments: ProseSegment[];
@@ -60,23 +61,22 @@ export function proseSegments(content: string | null | undefined): {
     }
 
     const text = op.insert;
-    const blocked =
-      isBlocked(op.attributes) ||
-      !!op.attributes?.link ||
-      URL_PATTERN.test(text) ||
-      EMAIL_PATTERN.test(text);
-
-    if (blocked) {
-      offset += text.length;
-      continue;
-    }
+    // code, code-block and link block the whole op; a raw URL or address
+    // only blocks its own line, because Quill merges consecutive plain
+    // lines into one op and the rest of that paragraph is still prose.
+    const opBlocked = isBlocked(op.attributes) || !!op.attributes?.link;
 
     // Line breaks end a run: a replacement must not restructure the note.
     const parts = text.split('\n');
     for (const [index, part] of parts.entries()) {
+      const blocked =
+        opBlocked || URL_PATTERN.test(part) || EMAIL_PATTERN.test(part);
+
       if (part.length > 0) {
-        segments.push({ id: `s${next++}`, offset, text: part });
+        // Excluded text still counts toward totalChars, so coverage
+        // reports partial instead of claiming the note was fully checked.
         totalChars += part.length;
+        if (!blocked) segments.push({ id: `s${next++}`, offset, text: part });
       }
       offset += part.length;
       // Only the breaks between parts advance the offset; the empty tail

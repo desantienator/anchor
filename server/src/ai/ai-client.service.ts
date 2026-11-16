@@ -72,8 +72,12 @@ export class AiClient {
     }
 
     return this.withSlot(async () => {
+      let timedOut = false;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, this.config.timeoutMs);
       const forward = () => controller.abort();
       signal?.addEventListener('abort', forward, { once: true });
 
@@ -110,7 +114,7 @@ export class AiClient {
         return this.contentOf(body);
       } catch (error) {
         if (error instanceof AiError) throw error;
-        if (controller.signal.aborted && !signal?.aborted) {
+        if (timedOut || signal?.aborted) {
           throw new AiError('AI_TIMEOUT', 'Local AI took too long to answer.');
         }
         throw new AiError('AI_UNREACHABLE', 'Local AI is not reachable.');

@@ -197,6 +197,94 @@ describe("applyEdits", () => {
 
     expect(result.ok).toBe(false);
   });
+  it("keeps segment ids aligned with the server when links, URLs, emails and code sit between lines", () => {
+    // Mirror of proseSegments in server/src/ai/prose.ts (ids only): a
+    // code/code-block or link attribute excludes the whole op; a URL or
+    // email only excludes its own line.
+    const serverIds = (
+      ops: { insert?: unknown; attributes?: Record<string, unknown> }[],
+    ): string[] => {
+      const blockedAttributes = (
+        attributes: Record<string, unknown> | undefined,
+      ) =>
+        !!attributes &&
+        ["code-block", "code"].some((name) => !!attributes[name]);
+      const url = /(?:https?:\/\/|www\.)\S+/i;
+      const email = /\S+@\S+\.\S+/;
+      const ids: string[] = [];
+      let next = 0;
+      for (const op of ops) {
+        if (typeof op.insert !== "string") continue;
+        const opBlocked =
+          blockedAttributes(op.attributes) || !!op.attributes?.link;
+        for (const part of op.insert.split("\n")) {
+          if (part.length === 0) continue;
+          if (opBlocked || url.test(part) || email.test(part)) continue;
+          ids.push(`s${next++}`);
+        }
+      }
+      return ids;
+    };
+
+    const ops = [
+      { insert: "first line ok\n" },
+      { insert: "second line ok\n" },
+      { insert: "teh linked\n", attributes: { link: "https://example.com" } },
+      { insert: "https://recieve.example.com/y\n" },
+      { insert: "bob@example.com\n" },
+      { insert: "code teh here\n", attributes: { "code-block": "plain" } },
+      // One op, three lines: only the URL line is excluded, so the two
+      // prose lines keep their own sN ids.
+      { insert: "intro line\nhttps://skip.example/z\nand more prose\n" },
+      { insert: "third line teh\n" },
+      { insert: "fourth line\n" },
+    ];
+    const content = stored(ops);
+    const expected = [
+      ["s0", "first line ok"],
+      ["s1", "second line ok"],
+      ["s2", "intro line"],
+      ["s3", "and more prose"],
+      ["s4", "third line teh"],
+      ["s5", "fourth line"],
+    ];
+
+    expect(storedSegments(content).map(({ id, text }) => [id, text])).toEqual(
+      expected,
+    );
+    expect(serverIds(ops)).toEqual(expected.map(([id]) => id));
+
+    const edits: AiAnalysis["edits"] = [
+      {
+        segmentId: "s4",
+        start: 11,
+        length: 3,
+        original: "teh",
+        replacement: "the",
+      },
+    ];
+    const result = applyEdits(
+      content,
+      analysis(edits),
+      acceptedAll(analysis(edits)),
+    );
+
+    // The correction must land on "third line teh", not the drifted line.
+    expect(result).toEqual({
+      ok: true,
+      content: stored([
+        { insert: "first line ok\n" },
+        { insert: "second line ok\n" },
+        { insert: "teh linked\n", attributes: { link: "https://example.com" } },
+        { insert: "https://recieve.example.com/y\n" },
+        { insert: "bob@example.com\n" },
+        { insert: "code teh here\n", attributes: { "code-block": "plain" } },
+        { insert: "intro line\nhttps://skip.example/z\nand more prose\n" },
+        { insert: "third line the\n" },
+        { insert: "fourth line\n" },
+      ]),
+    });
+  });
 });
 
 describe("storedSegments", () => {

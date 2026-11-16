@@ -142,6 +142,14 @@ export function acceptedEdits(
     if (hasLineBreak(replacement) || hasLineBreak(original)) continue;
     // Reject markup: spelling must not introduce formatting or links.
     if (/[<>]/.test(replacement)) continue;
+    // Spelling, not case: 'Teh' -> 'the' would lowercase a sentence
+    // start. A single letter ('i' -> 'I') is a legitimate fix.
+    if (
+      original.length > 1 &&
+      /^[A-Z]/.test(original) &&
+      /^[a-z]/.test(replacement)
+    )
+      continue;
 
     const start = segment.text.indexOf(original);
     if (start < 0) continue;
@@ -149,6 +157,12 @@ export function acceptedEdits(
     if (segment.text.indexOf(original, start + 1) >= 0) continue;
 
     const end = start + original.length;
+    // The quote must sit on whole-word edges: an alphanumeric neighbour
+    // means the model trimmed its quote and applying it would eat a letter.
+    const before = segment.text[start - 1];
+    const after = segment.text[end];
+    if (typeof before === 'string' && /[a-z0-9]/i.test(before)) continue;
+    if (typeof after === 'string' && /[a-z0-9]/i.test(after)) continue;
     const ranges = claimed.get(segmentId) ?? [];
     if (ranges.some(([from, to]) => start < to && end > from)) continue;
     ranges.push([start, end]);

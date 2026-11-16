@@ -1,9 +1,15 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Sparkles, TriangleAlert } from "lucide-react";
 import * as React from "react";
 import { toast } from "@/components/ui/toast";
+import type { Note } from "@/features/notes/types";
 import { sortTagsByName, type Tag, TagChip } from "@/features/tags";
 import { type AiAnalysis, analyzeNote, getAiPreferences } from "../api";
 import { applyEdits, editKey } from "../patches";
@@ -22,6 +28,23 @@ interface AiReviewProps {
   onApplyTags: (next: string[]) => void;
   onApplyContent: (next: string) => void;
   onClose: () => void;
+}
+
+/**
+ * The note version to base an analysis on. flushEdits() may just have saved
+ * a dirty draft, which bumps the server version and updates the note cache
+ * (handleSaved runs before the save queue settles), leaving the version
+ * captured at click time one behind. Re-read the current version from the
+ * cache; the pre-flush fast path (nothing to save) still holds the same
+ * value we captured, so it is unchanged.
+ */
+export function noteVersionAfterFlush(
+  queryClient: QueryClient,
+  noteId: string,
+  fallbackVersion: number,
+): number {
+  const cached = queryClient.getQueryData<Note>(["notes", noteId]);
+  return cached?.version ?? fallbackVersion;
 }
 
 /**
@@ -55,7 +78,11 @@ export function AiReview({
     mutationFn: async (operation: "tags" | "spelling") => {
       // The analysis must describe the saved note, not a stale draft.
       await flushEdits();
-      return analyzeNote(noteId, operation, version);
+      // The flush may have just saved a draft and bumped the version, so
+      // base the analysis on the note's current version, not the one
+      // captured at click time.
+      const baseVersion = noteVersionAfterFlush(queryClient, noteId, version);
+      return analyzeNote(noteId, operation, baseVersion);
     },
     onSuccess: (result) => {
       setAnalysis(result);

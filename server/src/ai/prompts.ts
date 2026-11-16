@@ -37,6 +37,7 @@ export function spellingPrompt(
         `Correct spelling mistakes in the supplied prose segments. Locale: ${locale}.`,
         'Do not paraphrase, summarise, translate, or change facts, names, numbers or punctuation.',
         'Each "original" must be an exact substring of that segment.',
+        'Quote each original as the whole word with its word boundary intact, and preserve the first-letter case.',
         INJECTION_GUARD,
         'Return only JSON matching {"edits":[{"segmentId":"s1","original":"teh","replacement":"the"}]}.',
         'Return an empty edits array when nothing needs correcting.',

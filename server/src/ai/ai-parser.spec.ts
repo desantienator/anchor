@@ -113,4 +113,52 @@ describe('acceptedEdits', () => {
       ),
     ).toEqual([]);
   });
+  it('rejects a quote that runs into an adjacent word', () => {
+    expect(
+      acceptedEdits(
+        {
+          edits: [
+            { segmentId: 'w0', original: 'recieve', replacement: 'received' },
+            { segmentId: 'w0b', original: 'recieve', replacement: 'received' },
+            { segmentId: 'w1', original: 'cat', replacement: 'dog' },
+          ],
+        },
+        segmentMap(
+          { id: 'w0', offset: 0, text: 'recieved' },
+          { id: 'w0b', offset: 9, text: 'therecieve' },
+          { id: 'w1', offset: 19, text: 'category' },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('rejects a case-shape change on a word', () => {
+    expect(
+      acceptedEdits(
+        {
+          edits: [{ segmentId: 'w2', original: 'Teh', replacement: 'the' }],
+        },
+        segmentMap({ id: 'w2', offset: 0, text: 'Teh' }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('still accepts a one-letter case fix', () => {
+    expect(
+      acceptedEdits(
+        {
+          edits: [{ segmentId: 'w3', original: 'i', replacement: 'I' }],
+        },
+        segmentMap({ id: 'w3', offset: 0, text: 'i sat' }),
+      ),
+    ).toEqual([
+      {
+        segmentId: 'w3',
+        start: 0,
+        length: 1,
+        original: 'i',
+        replacement: 'I',
+      },
+    ]);
+  });
 });

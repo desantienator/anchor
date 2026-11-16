@@ -17,7 +17,7 @@ describe('proseSegments', () => {
   });
 
   it('skips code, links, URLs and embeds', () => {
-    const { segments } = proseSegments(
+    const { segments, totalChars } = proseSegments(
       delta([
         { insert: 'see ' },
         {
@@ -38,6 +38,39 @@ describe('proseSegments', () => {
       ' and',
       'the end',
     ]);
+    // Attribute-blocked ops (link, code-block) and the raw-address line are
+    // excluded from the segments but still count toward totalChars, so
+    // coverage reports partial instead of claiming the note was checked.
+    expect(totalChars).toBe(50);
+  });
+
+  it('excludes only the URL line of a merged multi-line op and counts it in totalChars', () => {
+    const { segments, totalChars } = proseSegments(
+      delta([
+        {
+          insert:
+            'first line\nthe link https://example.com lives here\nthird line',
+        },
+      ]),
+    );
+
+    // Quill merges consecutive plain lines into one op: the raw URL only
+    // excludes its own line, the rest of the paragraph stays analyzable.
+    expect(segments.map((segment) => segment.text)).toEqual([
+      'first line',
+      'third line',
+    ]);
+    expect(segments[0].offset).toBe(0);
+    expect(segments[1].offset).toBe(51);
+
+    // The excluded URL line must still be counted so suggestSpelling's
+    // analyzedChars >= totalChars check reports partial, not complete.
+    const analyzed = segments.reduce(
+      (sum, segment) => sum + segment.text.length,
+      0,
+    );
+    expect(totalChars).toBe(59);
+    expect(analyzed < totalChars).toBe(true);
   });
 
   it('accepts a bare operation array and legacy plain text', () => {

@@ -30,10 +30,21 @@ function opsOf(content: string): Op[] | null {
   }
   return null;
 }
+// Exclusions must stay in lockstep with proseSegments in
+// server/src/ai/prose.ts: a code/code-block or link attribute blocks the
+// whole op, while a URL or email only blocks its own line, because Quill
+// merges consecutive plain lines into one op and the rest of that
+// paragraph is still prose. If the predicates ever diverge, sN ids drift
+// and edits land on the wrong line.
+const BLOCKED_ATTRIBUTES = ["code-block", "code"];
+const URL_PATTERN = /(?:https?:\/\/|www\.)\S+/i;
+const EMAIL_PATTERN = /\S+@\S+\.\S+/;
 
 /**
- * Mirrors the server's segmenting so edit IDs line up. Any divergence shows
- * up as a stale check failure at apply time, never as a silent bad write.
+ * Mirrors the server's segmenting so edit IDs line up, excluding the same
+ * lines proseSegments does (code, code blocks, links, URLs, emails). Any
+ * divergence shows up as a stale check failure at apply time, never as a
+ * silent bad write.
  */
 export function storedSegments(content: string): SegmentRef[] {
   const ops = opsOf(content) ?? [];
@@ -42,8 +53,16 @@ export function storedSegments(content: string): SegmentRef[] {
 
   ops.forEach((op, opIndex) => {
     if (typeof op.insert !== "string") return;
+    // Attributes block the whole op; a URL or email only blocks its own
+    // line. Same split as proseSegments on the server.
+    const attributes = op.attributes;
+    const opBlocked =
+      (!!attributes && BLOCKED_ATTRIBUTES.some((name) => !!attributes[name])) ||
+      !!attributes?.link;
     op.insert.split("\n").forEach((part, partIndex) => {
       if (part.length === 0) return;
+      if (opBlocked || URL_PATTERN.test(part) || EMAIL_PATTERN.test(part))
+        return;
       segments.push({ id: `s${next++}`, opIndex, partIndex, text: part });
     });
   });
