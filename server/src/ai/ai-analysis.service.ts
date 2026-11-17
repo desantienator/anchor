@@ -2,8 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NoteAccessService } from '../notes/services/note-access.service';
 import { NoteState, NoteSharePermission } from 'src/generated/prisma/enums';
-import { AiClient } from './ai-client.service';
-import { AiPreferencesService } from './ai-preferences.service';
+import { AiClient, type AiEndpoint } from './ai-client.service';
+import {
+  AiPreferencesService,
+  endpointFrom,
+} from './ai-preferences.service';
 import { AI_CONSTANTS, chunkCharBudget } from './ai.constants';
 import { acceptedEdits, acceptedTagIds, parseJsonObject } from './ai-parser';
 import { chunkSegments, proseSegments, tagExcerpt } from './prose';
@@ -27,15 +30,21 @@ async function askForJson(
   messages: Parameters<AiClient['complete']>[0],
   shape: string,
   maxTokens: number,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  endpoint: AiEndpoint,
 ): Promise<Record<string, unknown>> {
   const first = parseJsonObject(
-    await client.complete(messages, maxTokens, signal),
+    await client.complete(messages, maxTokens, signal, endpoint),
   );
   if (first !== null) return first;
 
   const retried = parseJsonObject(
-    await client.complete(repairPrompt(messages, shape), maxTokens, signal),
+    await client.complete(
+      repairPrompt(messages, shape),
+      maxTokens,
+      signal,
+      endpoint,
+    ),
   );
   if (retried === null) {
     throw new AiError(
@@ -64,7 +73,9 @@ export class AiAnalysisService {
     signal?: AbortSignal,
   ): Promise<AiAnalysis> {
     const prefs = await this.preferences.assertAllowed(userId, operation);
-
+    const endpoint = endpointFrom(
+      await this.preferences.effectiveConfig(userId),
+    );
     await this.access.ensureNoteAccess(
       userId,
       noteId,
@@ -110,6 +121,7 @@ export class AiAnalysisService {
         userId,
         note.title,
         prose.segments,
+        endpoint,
         signal,
       );
       return analysis;
@@ -119,6 +131,7 @@ export class AiAnalysisService {
       prose.segments,
       prose.totalChars,
       prefs.locale,
+      endpoint,
       signal,
     );
     analysis.edits = edits;
@@ -131,6 +144,7 @@ export class AiAnalysisService {
     userId: string,
     title: string,
     segments: ProseSegment[],
+    endpoint: AiEndpoint,
     signal?: AbortSignal,
   ): Promise<string[]> {
     const tags = await this.prisma.tag.findMany({
@@ -153,6 +167,7 @@ export class AiAnalysisService {
       TAG_SHAPE,
       200,
       signal,
+      endpoint,
     );
     // Pass the names too: models often echo a name instead of the id.
     return acceptedTagIds(raw, tags);
@@ -162,6 +177,7 @@ export class AiAnalysisService {
     segments: ProseSegment[],
     totalChars: number,
     locale: string,
+    endpoint: AiEndpoint,
     signal?: AbortSignal,
   ): Promise<[SpellingEdit[], SpellingCoverage, string[]]> {
     const warnings: string[] = [];
@@ -195,6 +211,7 @@ export class AiAnalysisService {
           SPELLING_SHAPE,
           800,
           signal,
+          endpoint,
         );
         edits.push(...acceptedEdits(raw, byId));
       } catch (error) {

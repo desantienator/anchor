@@ -1,5 +1,8 @@
 import { api, getJson } from "@/lib/api/client";
 
+/** Where a field's effective value comes from. */
+export type AiFieldSource = "user" | "environment" | "none";
+
 export interface AiPreferences {
   enabled: boolean;
   taggingEnabled: boolean;
@@ -9,6 +12,15 @@ export interface AiPreferences {
   locale: string;
   consentedConfigKey: string | null;
   consentRequired: boolean;
+  configured: boolean;
+  baseUrl: string | null;
+  model: string | null;
+  hasApiKey: boolean;
+  source: {
+    baseUrl: AiFieldSource;
+    model: AiFieldSource;
+    apiKey: AiFieldSource;
+  };
 }
 
 export interface AiCapabilities {
@@ -16,6 +28,12 @@ export interface AiCapabilities {
   baseUrl: string | null;
   model: string | null;
   timeoutMs: number;
+  hasApiKey: boolean;
+  source: {
+    baseUrl: AiFieldSource;
+    model: AiFieldSource;
+    apiKey: AiFieldSource;
+  };
 }
 
 export interface SpellingEdit {
@@ -42,18 +60,49 @@ export interface AiAnalysis {
 
 export type AiOperation = "tags" | "spelling";
 
+/** The fields a person may change; the raw API key only travels this way. */
+export type AiPreferencesPatch = Partial<
+  Pick<
+    AiPreferences,
+    | "enabled"
+    | "taggingEnabled"
+    | "spellingEnabled"
+    | "onSaveEnabled"
+    | "autoApplyTags"
+    | "locale"
+    | "baseUrl"
+    | "model"
+  >
+> & {
+  consent?: boolean;
+  /** An empty string removes the person's saved key. */
+  apiKey?: string;
+};
+
 export function getAiPreferences(): Promise<AiPreferences> {
   return getJson<AiPreferences>("api/ai/preferences");
 }
 
 export function updateAiPreferences(
-  patch: Partial<AiPreferences> & { consent?: boolean },
+  patch: AiPreferencesPatch,
 ): Promise<AiPreferences> {
   return api.patch("api/ai/preferences", { json: patch }).json<AiPreferences>();
 }
 
 export function getAiCapabilities(): Promise<AiCapabilities> {
   return getJson<AiCapabilities>("api/ai/capabilities");
+}
+
+/** A tiny completion against the person's own endpoint. */
+export function testAiConnection(): Promise<{
+  ok: boolean;
+  model: string;
+  reply: string;
+}> {
+  // A little past the server's 30-second probe window.
+  return api
+    .post("api/ai/test", { timeout: 35_000 })
+    .json<{ ok: boolean; model: string; reply: string }>();
 }
 
 /**

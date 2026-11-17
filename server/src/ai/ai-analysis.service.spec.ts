@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfigType } from '@nestjs/config';
 import { AiClient } from './ai-client.service';
 import { AiAnalysisService } from './ai-analysis.service';
-import { AiPreferencesService } from './ai-preferences.service';
+import {
+  AiPreferencesService,
+  type AiEffectiveConfig,
+} from './ai-preferences.service';
 import { AiError } from './ai.types';
 import type { AiConfig } from '../config/configuration';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +15,7 @@ const settings = (
   overrides: Partial<ConfigType<typeof AiConfig>> = {},
 ): ConfigType<typeof AiConfig> => ({
   enabled: true,
+  explicitlyDisabled: false,
   baseUrl: 'http://model.test/v1',
   model: 'tiny',
   apiKey: null,
@@ -19,6 +23,24 @@ const settings = (
   contextTokens: 8192,
   ...overrides,
 });
+
+/** The server's own configuration expressed as an effective config. */
+function effectiveFromSettings(
+  cfg: ConfigType<typeof AiConfig>,
+): AiEffectiveConfig {
+  return {
+    baseUrl: cfg.baseUrl || null,
+    model: cfg.model || null,
+    apiKey: cfg.apiKey,
+    timeoutMs: cfg.timeoutMs,
+    configured: cfg.enabled,
+    source: {
+      baseUrl: cfg.baseUrl ? 'environment' : 'none',
+      model: cfg.model ? 'environment' : 'none',
+      apiKey: cfg.apiKey ? 'environment' : 'none',
+    },
+  };
+}
 
 const content = (text: string) =>
   JSON.stringify({ ops: [{ insert: `${text}\n` }] });
@@ -47,19 +69,33 @@ function fakePrisma(note: { title: string; content: string; version: number }) {
   };
 }
 
-function fakePreferences() {
+function fakePreferences(effective: AiEffectiveConfig) {
+  const assertAllowed = vi.fn(async () => {
+    if (!effective.configured) {
+      throw new AiError(
+        'AI_DISABLED',
+        'Local AI is not configured on this server.',
+      );
+    }
+    return { locale: 'en-AU', ...effective };
+  });
   return {
-    assertAllowed: vi.fn().mockResolvedValue({ locale: 'en-AU' }),
+    assertAllowed,
+    effectiveConfig: vi.fn().mockResolvedValue(effective),
   };
 }
 
 function harness(
   note: { title: string; content: string; version: number },
   configOverrides: Partial<ConfigType<typeof AiConfig>> = {},
+  effective?: AiEffectiveConfig,
 ): Harness {
   const prisma = fakePrisma(note);
-  const client = new AiClient(settings(configOverrides));
-  const preferences = fakePreferences();
+  const cfg = settings(configOverrides);
+  const client = new AiClient(cfg);
+  const preferences = fakePreferences(
+    effective ?? effectiveFromSettings(cfg),
+  );
   const access = {
     ensureNoteAccess: vi.fn().mockResolvedValue({ hasAccess: true }),
     ensureNoteIsActive: vi.fn().mockResolvedValue(undefined),
@@ -248,5 +284,36 @@ describe('AiAnalysisService', () => {
     await expect(
       service.analyze('user-1', 'note-1', 'spelling', 1),
     ).rejects.toMatchObject({ code: 'AI_UNREACHABLE' });
+  });
+  it('sends completions to the person’s own endpoint when they override it', async () => {
+    fetchMock.mockResolvedValueOnce(
+      reply({
+        edits: [{ segmentId: 's0', original: 'teh', replacement: 'the' }],
+      }),
+    );
+    const personal: AiEffectiveConfig = {
+      baseUrl: 'http://personal.test/v1',
+      model: 'personal-model',
+      apiKey: 'personal-key',
+      timeoutMs: 5000,
+      configured: true,
+      source: { baseUrl: 'user', model: 'user', apiKey: 'user' },
+    };
+    const { service } = harness(
+      { title: 'Note', content: content('teh cat'), version: 1 },
+      {},
+      personal,
+    );
+
+    await service.analyze('user-1', 'note-1', 'spelling', 1);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [
+      string,
+      { headers: { Authorization?: string }; body: string },
+    ];
+    expect(url).toBe('http://personal.test/v1/chat/completions');
+    expect(init.headers.Authorization).toBe('Bearer personal-key');
+    expect(JSON.parse(init.body).model).toBe('personal-model');
   });
 });

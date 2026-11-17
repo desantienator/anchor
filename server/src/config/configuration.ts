@@ -43,13 +43,17 @@ function intFromEnv(value: string | undefined, fallback: number): number {
 }
 
 // An OpenAI-compatible chat-completions endpoint, reached from the server.
-// Disabled unless a base URL and model are both set.
+// Disabled only when AI_ENABLED is explicitly "false"; otherwise it is on
+// whenever a base URL and model are both set. A person can also supply their
+// own endpoint/model/key, in which case those beat these values.
 export const AiConfig = registerAs('ai', () => {
   const baseUrl = (process.env.AI_BASE_URL?.trim() ?? '').replace(/\/+$/, '');
   const model = process.env.AI_MODEL?.trim() ?? '';
+  const explicitlyDisabled = process.env.AI_ENABLED === 'false';
   return {
-    enabled: process.env.AI_ENABLED === 'true' && !!baseUrl && !!model,
+    enabled: !explicitlyDisabled && !!baseUrl && !!model,
     baseUrl,
+    explicitlyDisabled,
     model,
     apiKey: process.env.AI_API_KEY?.trim() || null,
     timeoutMs: intFromEnv(process.env.AI_TIMEOUT_MS, DEFAULT_AI_TIMEOUT_MS),

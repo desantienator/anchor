@@ -8,6 +8,7 @@ function makeClient(
 ): AiClient {
   const config: ConfigType<typeof AiConfig> = {
     enabled: true,
+    explicitlyDisabled: false,
     baseUrl: 'http://model.test/v1',
     model: 'tiny',
     apiKey: null,
@@ -80,5 +81,88 @@ describe('AiClient.complete – timeout error mapping', () => {
     await expect(
       client.complete([{ role: 'user', content: 'hi' }], 8),
     ).rejects.toMatchObject({ code: 'AI_UNREACHABLE' });
+  });
+});
+
+describe('AiClient.complete – per-call endpoint', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('AI_DISABLED when the passed endpoint has no model', async () => {
+    const client = makeClient();
+    await expect(
+      client.complete(
+        [{ role: 'user', content: 'hi' }],
+        8,
+        undefined,
+        {
+          baseUrl: 'http://other.test/v1',
+          model: '',
+          apiKey: null,
+          timeoutMs: 1000,
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'AI_DISABLED' });
+  });
+
+  it('AI_DISABLED when the server is explicitly disabled', async () => {
+    const client = makeClient({ explicitlyDisabled: true });
+    await expect(
+      client.complete([{ role: 'user', content: 'hi' }], 8),
+    ).rejects.toMatchObject({ code: 'AI_DISABLED' });
+  });
+
+  it('uses the passed endpoint, key and timeout instead of the server values', async () => {
+    const fetchMock = vi.fn(
+      () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { content: 'ok' } }],
+            }),
+            { status: 200 },
+          ),
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const client = makeClient();
+
+    const reply = await client.complete(
+      [{ role: 'user', content: 'hi' }],
+      8,
+      undefined,
+      {
+        baseUrl: 'http://other.test/v2',
+        model: 'personal',
+        apiKey: 'secret',
+        timeoutMs: 1234,
+      },
+    );
+    expect(reply).toBe('ok');
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      {
+        headers: { Authorization?: string };
+        body: string;
+      },
+    ];
+    expect(url).toBe('http://other.test/v2/chat/completions');
+    expect(init.headers.Authorization).toBe('Bearer secret');
+    expect(JSON.parse(init.body).model).toBe('personal');
+  });
+
+  it('configKey uses the passed endpoint', () => {
+    const client = makeClient();
+    expect(client.configKey()).toBe('http://model.test/v1|tiny');
+    expect(
+      client.configKey({
+        baseUrl: 'http://other.test/v1',
+        model: 'personal',
+        apiKey: null,
+        timeoutMs: 1000,
+      }),
+    ).toBe('http://other.test/v1|personal');
   });
 });

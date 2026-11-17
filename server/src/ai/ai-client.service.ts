@@ -10,6 +10,17 @@ export interface ChatMessage {
 }
 
 /**
+ * Where one completion goes. Callers may pass a person's effective
+ * configuration; the server's own values are the default.
+ */
+export interface AiEndpoint {
+  baseUrl: string;
+  model: string;
+  apiKey: string | null;
+  timeoutMs: number;
+}
+
+/**
  * Reads `choices[0].message.content` from an untrusted provider body, which
  * may be a string or an array of text parts.
  */
@@ -56,9 +67,20 @@ export class AiClient {
     return this.config;
   }
 
-  /** A stable identifier for the configured destination and model. */
-  configKey(): string {
-    return `${this.config.baseUrl}|${this.config.model}`;
+  /** The server's own destination, used when a caller passes none. */
+  get endpoint(): AiEndpoint {
+    return {
+      baseUrl: this.config.baseUrl,
+      model: this.config.model,
+      apiKey: this.config.apiKey,
+      timeoutMs: this.config.timeoutMs,
+    };
+  }
+
+  /** A stable identifier for a destination and model. */
+  configKey(endpoint?: AiEndpoint): string {
+    const target = endpoint ?? this.endpoint;
+    return `${target.baseUrl}|${target.model}`;
   }
 
   /** Completes one request; `signal` lets a disconnecting client stop it. */
@@ -66,8 +88,10 @@ export class AiClient {
     messages: ChatMessage[],
     maxTokens: number,
     signal?: AbortSignal,
+    endpoint?: AiEndpoint,
   ): Promise<string> {
-    if (!this.config.enabled) {
+    const target = endpoint ?? this.endpoint;
+    if (this.config.explicitlyDisabled || !target.baseUrl || !target.model) {
       throw new AiError('AI_DISABLED', 'Local AI is not configured.');
     }
 
@@ -77,23 +101,23 @@ export class AiClient {
       const timer = setTimeout(() => {
         timedOut = true;
         controller.abort();
-      }, this.config.timeoutMs);
+      }, target.timeoutMs);
       const forward = () => controller.abort();
       signal?.addEventListener('abort', forward, { once: true });
 
       try {
         const response = await fetch(
-          `${this.config.baseUrl}/chat/completions`,
+          `${target.baseUrl}/chat/completions`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(this.config.apiKey
-                ? { Authorization: `Bearer ${this.config.apiKey}` }
+              ...(target.apiKey
+                ? { Authorization: `Bearer ${target.apiKey}` }
                 : {}),
             },
             body: JSON.stringify({
-              model: this.config.model,
+              model: target.model,
               messages,
               temperature: 0,
               max_tokens: maxTokens,

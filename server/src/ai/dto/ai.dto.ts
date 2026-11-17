@@ -38,6 +38,22 @@ export class UpdateAiPreferencesDto {
   @Matches(/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/)
   locale?: string;
 
+  /** The person's own endpoint; an empty string clears it. */
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  baseUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  model?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  apiKey?: string;
+
   /** Explicit agreement to send note content to the configured endpoint. */
   @IsOptional()
   @IsBoolean()

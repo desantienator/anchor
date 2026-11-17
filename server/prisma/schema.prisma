@@ -93,6 +93,9 @@ model UserAiPreferences {
   onSaveEnabled      Boolean  @default(false)
   autoApplyTags      Boolean  @default(false)
   locale             String   @default("en")
+  baseUrl            String?
+  model              String?
+  apiKey             String?
   consentedConfigKey String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

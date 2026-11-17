@@ -11,11 +11,16 @@ import {
 import type { Request } from 'express';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AiClient } from './ai-client.service';
-import { AiPreferencesService } from './ai-preferences.service';
+import { AiClient, type AiEndpoint } from './ai-client.service';
+import {
+  AiPreferencesService,
+  endpointFrom,
+} from './ai-preferences.service';
 import { AiAnalysisService } from './ai-analysis.service';
 import { AnalyzeNoteDto, UpdateAiPreferencesDto } from './dto/ai.dto';
 import { AiError } from './ai.types';
+
+const PROBE_TIMEOUT_MS = 30_000;
 
 /** Aborts provider work when the client goes away. */
 function abortOnDisconnect(request: Request): AbortSignal {
@@ -73,16 +78,47 @@ export class AiController {
     return this.preferences.update(userId, dto);
   }
 
-  /** What the server offers, without ever revealing the key. */
+  /**
+   * What this person's AI calls will use, without ever revealing the key.
+   * Each field is either the person's own value or the server's.
+   */
   @Get('capabilities')
-  capabilities() {
-    const settings = this.client.settings;
+  async capabilities(@CurrentUser('id') userId: string) {
+    const effective = await this.preferences.effectiveConfig(userId);
     return {
-      configured: settings.enabled,
-      baseUrl: settings.enabled ? displayedOrigin(settings.baseUrl) : null,
-      model: settings.enabled ? settings.model : null,
-      timeoutMs: settings.timeoutMs,
+      configured: effective.configured,
+      baseUrl: effective.baseUrl ? displayedOrigin(effective.baseUrl) : null,
+      model: effective.model,
+      timeoutMs: effective.timeoutMs,
+      hasApiKey: effective.apiKey !== null,
+      source: effective.source,
     };
+  }
+
+  /**
+   * Checks the person's own endpoint with a tiny completion. It does not
+   * use a `/models` listing: several servers omit or misreport that route.
+   */
+  @Post('test')
+  async test(@CurrentUser('id') userId: string) {
+    const effective = await this.preferences.effectiveConfig(userId);
+    const endpoint: AiEndpoint = endpointFrom(effective);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+    try {
+      const reply = await this.client.complete(
+        [
+          { role: 'system', content: 'Reply with the single word OK.' },
+          { role: 'user', content: 'ping' },
+        ],
+        8,
+        controller.signal,
+        endpoint,
+      );
+      return { ok: true, model: endpoint.model, reply: reply.slice(0, 40) };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   @Post('notes/:noteId/analyze')
